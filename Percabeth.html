@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Caça-Palavras: Percy Jackson e os Olimpianos</title>
+<style>
+:root{
+  --blue:#173b67; --deep:#0b1728; --gold:#d6a63b; --cream:#f6f1e5;
+  --ink:#202a36; --sea:#dceaf4; --green:#2e7d5b; --red:#b94b43;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; min-height:100vh; padding:20px; display:flex; justify-content:center;
+  align-items:center; background:radial-gradient(circle at top,#234c75 0,#0b1728 65%);
+  font-family:Georgia,'Times New Roman',serif; color:var(--ink);
+}
+.container{
+  width:min(1120px,100%); padding:25px; background:var(--cream);
+  border:5px solid var(--gold); border-radius:14px;
+  box-shadow:0 14px 36px #0008;
+}
+h1{text-align:center;color:var(--blue);font-size:clamp(1.5rem,3vw,2.15rem);margin:0 0 7px;text-transform:uppercase;letter-spacing:1px}
+.subtitle{text-align:center;color:#916b19;font-weight:bold;margin:0 0 8px}
+.note{text-align:center;font:0.9rem Arial,sans-serif;color:#4d5d6c;margin:0 0 22px}
+.game-area{display:flex;gap:24px;align-items:flex-start;justify-content:center}
+.grid{
+  display:grid;grid-template-columns:repeat(22,minmax(0,1fr));gap:2px;
+  width:min(100%,550px);aspect-ratio:1;background:var(--blue);padding:4px;
+  border-radius:7px;user-select:none;touch-action:none;flex-shrink:0;
+}
+.cell{
+  min-width:0;aspect-ratio:1;background:#fff;display:flex;align-items:center;justify-content:center;
+  font:bold clamp(7px,1vw,12px) Arial,sans-serif;color:#253345;cursor:pointer;border-radius:1px;
+}
+.cell:hover{background:#fff2c9}
+.cell.selected{background:var(--gold);color:#fff}
+.cell.found{background:var(--green);color:#fff}
+.words-section{
+  width:310px;max-width:100%;background:var(--sea);padding:16px;border:2px dashed var(--blue);
+  border-radius:8px;max-height:550px;overflow:auto;
+}
+.words-section h2{text-align:center;color:var(--blue);font-size:1.1rem;margin:0 0 5px}
+.progress{text-align:center;font: bold .85rem Arial,sans-serif;color:#42576a;margin-bottom:12px}
+.words-list{list-style:none;padding:0;margin:0;columns:2;column-gap:15px;font: .78rem Arial,sans-serif}
+.words-list li{margin:0 0 8px;break-inside:avoid;overflow-wrap:anywhere}
+.words-list li.found{text-decoration:line-through;color:#718078}
+.controls{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:18px}
+button{background:var(--blue);color:white;border:0;padding:10px 17px;font-weight:bold;border-radius:6px;cursor:pointer}
+button:hover{background:#24558b}
+button.secondary{background:#7b642e}
+#message{min-height:24px;text-align:center;font-weight:bold;color:var(--green);margin-top:12px}
+.instructions{text-align:center;font: .82rem Arial,sans-serif;color:#536171;margin-top:9px}
+@media(max-width:850px){
+  body{padding:10px;align-items:flex-start}.container{padding:15px}
+  .game-area{flex-direction:column;align-items:center}
+  .grid{width:min(100%,600px)}
+  .words-section{width:min(100%,600px);max-height:300px}
+  .cell{font-size:clamp(6px,2vw,12px)}
+}
+</style>
+</head>
+<body>
+<main class="container">
+  <h1>Olimpianos</h1>
+  <p class="subtitle">Caça-Palavras • Nível Semideus</p>
+  <p class="note">Uma jornada pelos livros de Percy Jackson e o Acampamento Meio-Sangue</p>
+  <section class="game-area">
+    <div id="grid" class="grid" aria-label="Grade do caça-palavras"></div>
+    <aside class="words-section">
+      <h2>Palavras para encontrar</h2>
+      <div id="progress" class="progress">0 de 30 encontradas</div>
+      <ul id="wordsList" class="words-list"></ul>
+    </aside>
+  </section>
+  <div id="message" role="status"></div>
+  <div class="controls">
+    <button onclick="resetGame()">Novo tabuleiro</button>
+    <button class="secondary" onclick="clearSelection()">Limpar seleção</button>
+  </div>
+  <p class="instructions">Selecione uma palavra arrastando do início ao fim. As palavras podem estar na horizontal, vertical ou diagonal, inclusive ao contrário.</p>
+</main>
+<script>
+const words = [
+  "PERCY", "ANNABETH", "GROVER", "THALIA", "LUKE",
+  "CLARISSE", "CHIRON", "SALLY", "POSEIDON", "ZEUS",
+  "HADES", "ATENA", "ARES", "HERMES", "CRONOS",
+  "OLIMPO", "SUBMUNDO", "MINOTAURO", "MEDUSA", "QUIMERA",
+  "CICLOPE", "ORACULO", "PROFECIA", "RAIOMESTRE", "ACAMPAMENTO",
+  "MARDEMONSTROS", "LABIRINTO", "GAIA", "NICO", "CHALÉ"
+].filter((word, index, arr) => arr.indexOf(word) === index);
+
+const gridSize = 22;
+let grid = [];
+let placements = [];
+let selectedCells = [];
+let foundWords = [];
+let isSelecting = false;
+let startCoord = null;
+
+function createGridArray(){
+  grid = Array.from({length:gridSize},()=>Array(gridSize).fill(""));
+  placements = [];
+  const directions = [
+    [0,1],[1,0],[0,-1],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]
+  ];
+  const shuffled = [...words].sort((a,b)=>b.length-a.length);
+  for(const word of shuffled){
+    let placed = false;
+    for(let attempt=0; attempt<1500 && !placed; attempt++){
+      const [dr,dc] = directions[Math.floor(Math.random()*directions.length)];
+      const r = Math.floor(Math.random()*gridSize);
+      const c = Math.floor(Math.random()*gridSize);
+      const endR = r + dr*(word.length-1), endC = c + dc*(word.length-1);
+      if(endR<0 || endR>=gridSize || endC<0 || endC>=gridSize) continue;
+      let fits = true;
+      for(let i=0;i<word.length;i++){
+        const existing = grid[r+dr*i][c+dc*i];
+        if(existing && existing!==word[i]){fits=false;break;}
+      }
+      if(!fits) continue;
+      for(let i=0;i<word.length;i++) grid[r+dr*i][c+dc*i]=word[i];
+      placements.push({word,r,c,dr,dc});
+      placed=true;
+    }
+  }
+  const alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  for(let r=0;r<gridSize;r++) for(let c=0;c<gridSize;c++)
+    if(!grid[r][c]) grid[r][c]=alphabet[Math.floor(Math.random()*alphabet.length)];
+}
+function renderGrid(){
+  const el=document.getElementById("grid"); el.innerHTML="";
+  for(let r=0;r<gridSize;r++) for(let c=0;c<gridSize;c++){
+    const cell=document.createElement("div");
+    cell.className="cell"; cell.textContent=grid[r][c];
+    cell.dataset.row=r; cell.dataset.col=c;
+    cell.addEventListener("pointerdown",e=>{e.preventDefault();startSelection(r,c);});
+    cell.addEventListener("pointerenter",()=>continueSelection(r,c));
+    el.appendChild(cell);
+  }
+}
+function renderWordsList(){
+  const list=document.getElementById("wordsList"); list.innerHTML="";
+  words.forEach(w=>{
+    const li=document.createElement("li"); li.id="word-"+w; li.textContent=w;
+    list.appendChild(li);
+  });
+  updateProgress();
+}
+function startSelection(r,c){
+  isSelecting=true; startCoord={r,c}; selectedCells=[{r,c}]; updateCellStyles();
+}
+function continueSelection(r,c){
+  if(!isSelecting || !startCoord) return;
+  const dr=r-startCoord.r, dc=c-startCoord.c;
+  if(dr!==0 && dc!==0 && Math.abs(dr)!==Math.abs(dc)) return;
+  const stepR=dr===0?0:Math.sign(dr), stepC=dc===0?0:Math.sign(dc);
+  const steps=Math.max(Math.abs(dr),Math.abs(dc));
+  selectedCells=[];
+  for(let i=0;i<=steps;i++) selectedCells.push({r:startCoord.r+stepR*i,c:startCoord.c+stepC*i});
+  updateCellStyles();
+}
+function endSelection(){
+  if(!isSelecting) return;
+  isSelecting=false;
+  const formed=selectedCells.map(p=>grid[p.r][p.c]).join("");
+  const reverse=formed.split("").reverse().join("");
+  const matched=words.find(w=>(w===formed||w===reverse)&&!foundWords.includes(w));
+  if(matched){
+    foundWords.push(matched);
+    document.getElementById("word-"+matched).classList.add("found");
+    selectedCells.forEach(p=>{
+      const cell=document.querySelector(`.cell[data-row="${p.r}"][data-col="${p.c}"]`);
+      if(cell) cell.classList.add("found");
+    });
+    document.getElementById("message").textContent=foundWords.length===words.length
+      ?"Excelente, semideus! Você encontrou todas as palavras do universo de Percy Jackson!":"Boa! Mais uma palavra encontrada.";
+    updateProgress();
+  }
+  selectedCells=[]; startCoord=null; updateCellStyles();
+}
+function updateCellStyles(){
+  document.querySelectorAll(".cell").forEach(cell=>{
+    const r=Number(cell.dataset.row),c=Number(cell.dataset.col);
+    const selected=selectedCells.some(p=>p.r===r&&p.c===c);
+    if(selected && !cell.classList.contains("found")) cell.classList.add("selected");
+    else cell.classList.remove("selected");
+  });
+}
+function updateProgress(){
+  document.getElementById("progress").textContent=`${foundWords.length} de ${words.length} encontradas`;
+}
+function clearSelection(){selectedCells=[];startCoord=null;isSelecting=false;updateCellStyles();}
+function resetGame(){
+  foundWords=[];selectedCells=[];isSelecting=false;startCoord=null;
+  document.getElementById("message").textContent="";
+  createGridArray();renderGrid();renderWordsList();
+}
+document.addEventListener("pointerup",endSelection);
+window.addEventListener("load",resetGame);
+</script>
+</body>
+</html>
